@@ -1,0 +1,250 @@
+#include <stdio.h>
+#include <time.h>
+#include <windows.h>
+#include <conio.h>
+#include <string.h>
+#define MAX_ALARMS 10
+typedef struct {
+    int hour;
+    int min;
+    char label[31];
+    char location[31];
+} Alarm;
+typedef struct {
+    char name[31];
+    int timeOffset;
+} Location;
+Location locations[] = {
+    {"New York", -300},
+    {"London", 0},
+    {"Tokyo", 540},
+    {"Sydney", 600},
+    {"Berlin", 60},
+    {"Dhaka", 360}
+};
+#define NUM_LOCATIONS (sizeof(locations) / sizeof(locations[0]))
+int is24HourFormat = 0;
+Alarm alarms[MAX_ALARMS];
+int alarmCount = 0;
+int lastHour = -1, lastMin = -1, lastSec = -1;
+int currentLocationOffset = 0;
+void toggleTimeFormat() {
+    is24HourFormat = !is24HourFormat;
+}
+void displayClock(int locationOffset) {
+    static int lastUpdate = 0;
+    int currentTime = GetTickCount();
+
+    if (currentTime - lastUpdate < 1000) return;
+    lastUpdate = currentTime;
+
+    time_t now = time(NULL);
+    struct tm *lt = localtime(&now);
+    int hour = lt->tm_hour;
+    int min = lt->tm_min;
+    int sec = lt->tm_sec;
+
+    hour = (hour + locationOffset / 60) % 24;
+    min = (min + locationOffset % 60) % 60;
+    if (hour < 0) hour += 24;
+
+    int displayHour = hour;
+    if (!is24HourFormat) {
+        if (displayHour == 0) displayHour = 12;
+        else if (displayHour > 12) displayHour -= 12;
+    }
+
+    if (hour == lastHour && min == lastMin && sec == lastSec) return;
+
+    lastHour = hour;
+    lastMin = min;
+    lastSec = sec;
+
+    system("cls");
+    printf("Mode: Clock (%s Format)\n", is24HourFormat ? "24-Hour" : "12-Hour");
+    printf("Current Time: %02d:%02d:%02d %s\n",
+           displayHour, min, sec,
+           is24HourFormat ? "" : (hour >= 12 ? "PM" : "AM"));
+    printf("[T] Toggle Format   [M] Menu   [L] Change Location   [Esc] Exit\n");
+
+    for (int i = 0; i < alarmCount; i++) {
+        if (hour == alarms[i].hour && min == alarms[i].min && sec == 0) {
+            printf(">>> ALARM! %02d:%02d - %s <<<\n",
+                   alarms[i].hour, alarms[i].min, alarms[i].label);
+            Beep(1000, 800);
+            Sleep(1000);
+        }
+    }
+}
+void displayStopwatch(int swHour, int swMin, int swSec, int isRunning) {
+    char *status = isRunning ? "(Running)" : "(Paused)";
+    printf("Mode: Stopwatch\n");
+    printf("Elapsed Time: %02d:%02d:%02d %s\n", swHour, swMin, swSec, status);
+    printf("[Space] Start/Pause   [R] Reset   [M] Menu   [Esc] Exit\n");
+}
+void showMenu() {
+    system("cls");
+    printf("=== DIGITAL CLOCK, STOPWATCH & ALARM ===\n");
+    printf("Enter your choice:\n");
+    printf("1. Clock\n");
+    printf("2. Stopwatch\n");
+    printf("3. Alarm\n");
+    printf("4. Exit\n");
+    printf("Choice: ");
+}
+void listAlarms() {
+    printf("=== Alarm List ===\n");
+    if (alarmCount == 0) {
+        printf("No alarms set.\n");
+    } else {
+        for (int i = 0; i < alarmCount; i++) {
+            int h = alarms[i].hour;
+            char period[3] = "";
+            if (!is24HourFormat) {
+                strcpy(period, h >= 12 ? "PM" : "AM");
+                if (h == 0) h = 12;
+                else if (h > 12) h -= 12;
+            }
+            printf("%d. %02d:%02d %s - %s (Location: %s)\n",
+                i + 1, h, alarms[i].min,
+                is24HourFormat ? "" : period, alarms[i].label, alarms[i].location);
+        }
+    }
+}
+void addAlarm() {
+    int h, m;
+    char label[31];
+    char period[3] = "";
+    char location[31];
+
+    printf("Enter hour (1-12 or 0-23): ");
+    scanf("%d", &h);
+    printf("Enter minute (0-59): ");
+    scanf("%d", &m);
+
+    if (!is24HourFormat) {
+        printf("Enter AM or PM: ");
+        scanf("%s", period);
+        if (strcmp(period, "PM") == 0 || strcmp(period, "pm") == 0) {
+            if (h != 12) h += 12;
+        } else if (strcmp(period, "AM") == 0 || strcmp(period, "am") == 0) {
+            if (h == 12) h = 0;
+        }
+    }
+
+    printf("Enter label for alarm: ");
+    getchar();
+    fgets(label, sizeof(label), stdin);
+    label[strcspn(label, "\n")] = '\0';
+
+    printf("Enter location for alarm: ");
+    fgets(location, sizeof(location), stdin);
+    location[strcspn(location, "\n")] = '\0';
+
+    if (alarmCount < MAX_ALARMS) {
+        alarms[alarmCount].hour = h;
+        alarms[alarmCount].min = m;
+        strncpy(alarms[alarmCount].label, label, 30);
+        strncpy(alarms[alarmCount].location, location, 30);
+        alarmCount++;
+        printf("Alarm added!\n");
+    } else {
+        printf("Alarm list is full!\n");
+    }
+    Sleep(1000);
+}
+void deleteAlarm() {
+    listAlarms();
+    if (alarmCount == 0) return;
+
+    int index;
+    printf("Enter alarm number to delete: ");
+    scanf("%d", &index);
+    if (index < 1 || index > alarmCount) {
+        printf("Invalid selection.\n");
+        Sleep(1000);
+        return;
+    }
+
+    for (int i = index - 1; i < alarmCount - 1; i++) {
+        alarms[i] = alarms[i + 1];
+    }
+    alarmCount--;
+    printf("Alarm deleted.\n");
+    Sleep(1000);
+}
+void alarmMenu() {
+    while (1) {
+        system("cls");
+        listAlarms();
+        printf("\n[A] Add Alarm   [D] Delete Alarm   [M] Menu\n");
+        char ch = _getch();
+        if (ch == 'm' || ch == 'M') break;
+        else if (ch == 'a' || ch == 'A') {
+            system("cls");
+            addAlarm();
+        } else if (ch == 'd' || ch == 'D') {
+            system("cls");
+            deleteAlarm();
+        }
+    }
+}
+void changeClockLocation() {
+    system("cls");
+    printf("=== Select Location ===\n");
+    for (int i = 0; i < NUM_LOCATIONS; i++) {
+        printf("%d. %s\n", i + 1, locations[i].name);
+    }
+    int choice;
+    printf("Enter location number: ");
+    scanf("%d", &choice);
+    if (choice < 1 || choice > NUM_LOCATIONS) {
+        printf("Invalid selection.\n");
+        Sleep(1000);
+        return;
+    }
+
+    Location selectedLocation = locations[choice - 1];
+    currentLocationOffset = selectedLocation.timeOffset;
+    Sleep(2000);
+}
+int main() {
+    int swHour = 0, swMin = 0, swSec = 0;
+    int isRunning = 0;
+    int mode = 0;
+
+    while (1) {
+        if (mode == 0) {
+            showMenu();
+            char ch = _getch();
+            if (ch == '1') mode = 1;
+            else if (ch == '2') mode = 2;
+            else if (ch == '3') mode = 3;
+            else if (ch == '4' || ch == 27) break;
+        } else {
+            if (mode == 1) {
+                displayClock(currentLocationOffset);
+            } else if (mode == 2) {
+                displayStopwatch(swHour, swMin, swSec, isRunning);
+            } else if (mode == 3) {
+                alarmMenu();
+                mode = 0;
+                continue;
+            }
+
+            if (_kbhit()) {
+                char ch = _getch();
+                if (ch == 27) break;
+                else if (ch == 'm' || ch == 'M') mode = 0;
+                else if (mode == 1 && (ch == 't' || ch == 'T')) toggleTimeFormat();
+                else if (mode == 1 && (ch == 'l' || ch == 'L')) changeClockLocation();
+                else if (mode == 2 && ch == ' ') isRunning = !isRunning;
+                else if (mode == 2 && (ch == 'r' || ch == 'R')) {
+                    swHour = swMin = swSec = 0;
+                    isRunning = 0;
+                }
+            }
+        }
+    }
+    return 0;
+}
